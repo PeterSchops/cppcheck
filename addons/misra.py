@@ -3522,7 +3522,6 @@ class MisraChecker:
                 continue
             self.reportError(token, 21, 15)
 
-<<<<<<< HEAD
     def misra_21_16(self, cfg):
         for token in cfg.tokenlist:
             if token.str != 'memcmp':
@@ -3542,7 +3541,7 @@ class MisraChecker:
                 if arg.valueType.isEnum():
                     continue
                 self.reportError(token, 21, 16)
-=======
+
     def misra_21_19(self, cfg):
         for token in cfg.tokenlist:
             if token.str in ('localeconv', 'getenv', 'setlocale', 'strerror') and simpleMatch(token.next, '('):
@@ -3559,7 +3558,6 @@ class MisraChecker:
                         self.reportError(token, 21, 19)
             if token.variable and simpleMatch(token.variable.typeStartToken, 'lconv') and token.variable.isPointer:
                 self.reportError(token, 21, 19)
->>>>>>> 1
 
     def misra_21_21(self, cfg):
         for token in cfg.tokenlist:
