@@ -3556,8 +3556,16 @@ class MisraChecker:
                     lhs = parent.astParent.astOperand1
                     if lhs and lhs.valueType and lhs.valueType.pointer > 0 and lhs.valueType.constness == 0:
                         self.reportError(token, 21, 19)
-            if token.variable and simpleMatch(token.variable.typeStartToken, 'lconv') and token.variable.isPointer:
-                self.reportError(token, 21, 19)
+            if token.str == '=':
+                lhs = token.astOperand1
+                while simpleMatch(lhs, '*') and lhs.astOperand2 is None:
+                    lhs = lhs.astOperand1
+                if not simpleMatch(lhs, '.'):
+                    continue
+                while simpleMatch(lhs, '.'):
+                    lhs = lhs.astOperand1
+                if lhs and lhs.variable and simpleMatch(lhs.variable.typeStartToken, 'lconv'):
+                    self.reportError(token, 21, 19)
 
     def misra_21_21(self, cfg):
         for token in cfg.tokenlist:
