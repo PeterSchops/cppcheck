@@ -3522,6 +3522,7 @@ class MisraChecker:
                 continue
             self.reportError(token, 21, 15)
 
+<<<<<<< HEAD
     def misra_21_16(self, cfg):
         for token in cfg.tokenlist:
             if token.str != 'memcmp':
@@ -3541,6 +3542,24 @@ class MisraChecker:
                 if arg.valueType.isEnum():
                     continue
                 self.reportError(token, 21, 16)
+=======
+    def misra_21_19(self, cfg):
+        for token in cfg.tokenlist:
+            if token.str in ('localeconv', 'getenv', 'setlocale', 'strerror') and simpleMatch(token.next, '('):
+                name, _ = cppcheckdata.get_function_call_name_args(token)
+                if name is None or name != token.str:
+                    continue
+                parent = token.next
+                while simpleMatch(parent.astParent, '+'):
+                    parent = parent.astParent
+                # x = f()
+                if simpleMatch(parent.astParent, '=') and parent == parent.astParent.astOperand2:
+                    lhs = parent.astParent.astOperand1
+                    if lhs and lhs.valueType and lhs.valueType.pointer > 0 and lhs.valueType.constness == 0:
+                        self.reportError(token, 21, 19)
+            if token.variable and simpleMatch(token.variable.typeStartToken, 'lconv') and token.variable.isPointer:
+                self.reportError(token, 21, 19)
+>>>>>>> 1
 
     def misra_21_21(self, cfg):
         for token in cfg.tokenlist:
@@ -4189,6 +4208,7 @@ class MisraChecker:
             self.executeCheck(2114, self.misra_21_14, cfg)
             self.executeCheck(2115, self.misra_21_15, cfg)
             self.executeCheck(2116, self.misra_21_16, cfg)
+            self.executeCheck(2121, self.misra_21_19, cfg)
             self.executeCheck(2121, self.misra_21_21, cfg)
             # 22.4 is already covered by Cppcheck writeReadOnlyFile
             self.executeCheck(2205, self.misra_22_5, cfg)
