@@ -246,8 +246,10 @@ private:
         TEST_CASE(functionArgs17);
         TEST_CASE(functionArgs18); // #10376
         TEST_CASE(functionArgs19); // #10376
+        TEST_CASE(functionArgs20);
 
         TEST_CASE(functionImplicitlyVirtual);
+        TEST_CASE(functionGetOverridden);
 
         TEST_CASE(functionIsInlineKeyword);
 
@@ -471,6 +473,7 @@ private:
         TEST_CASE(lambda2); // #7473
         TEST_CASE(lambda3);
         TEST_CASE(lambda4);
+        TEST_CASE(lambda5);
 
         TEST_CASE(circularDependencies); // #6298
 
@@ -2707,6 +2710,17 @@ private:
         ASSERT_EQUALS(3, func->argCount());
     }
 
+    void functionArgs20() { // #11769
+        const char code[] = "void f(void *(*g)(void *) = [](void *p) { return p; }) {}";
+        GET_SYMBOL_DB(code);
+        ASSERT(db != nullptr);
+        const Scope *scope = db->functionScopes.front();
+        const Function *func = scope->function;
+        ASSERT_EQUALS(1, func->argCount());
+        const Variable* arg = func->getArgumentVar(0);
+        TODO_ASSERT(arg->hasDefault());
+    }
+
     void functionImplicitlyVirtual() {
         GET_SYMBOL_DB("class base { virtual void f(); };\n"
                       "class derived : base { void f(); };\n"
@@ -2715,6 +2729,24 @@ private:
         ASSERT_EQUALS(4, db->scopeList.size());
         const Function *function = db->scopeList.back().function;
         ASSERT_EQUALS(true, function && function->isImplicitlyVirtual(false));
+    }
+
+    void functionGetOverridden() {
+        GET_SYMBOL_DB("struct B { virtual void f(); };\n"
+                      "struct D : B {\n"
+                      "public:\n"
+                      "    void f() override;\n"
+                      "};\n"
+                      "struct D2 : D { void f() override {} };\n");
+        ASSERT(db != nullptr);
+        ASSERT_EQUALS(5, db->scopeList.size());
+        const Function *func = db->scopeList.back().function;
+        ASSERT(func && func->nestedIn);
+        ASSERT_EQUALS("D2", func->nestedIn->className);
+        bool foundAllBaseClasses{};
+        const Function* baseFunc = func->getOverriddenFunction(&foundAllBaseClasses);
+        ASSERT(baseFunc && baseFunc->nestedIn && foundAllBaseClasses);
+        ASSERT_EQUALS("D", baseFunc->nestedIn->className);
     }
 
     void functionIsInlineKeyword() {
@@ -2859,7 +2891,7 @@ private:
 
     void symboldatabase2() {
         check("class foo {\n"
-              "public slots :\n"
+              "public:\n"
               "foo() { }\n"
               "};");
         ASSERT_EQUALS("", errout.str());
@@ -7761,6 +7793,26 @@ private:
         ASSERT(s.type());
         --scope;
         ASSERT_EQUALS(s.type()->classScope, &*scope);
+    }
+
+    void lambda5() { // #11275
+        GET_SYMBOL_DB("int* f() {\n"
+                      "    auto g = []<typename T>() {\n"
+                      "        return true;\n"
+                      "    };\n"
+                      "    return nullptr;\n"
+                      "}\n");
+
+        ASSERT(db && db->scopeList.size() == 3);
+        std::list<Scope>::const_iterator scope = db->scopeList.cbegin();
+        ASSERT_EQUALS(Scope::eGlobal, scope->type);
+        ++scope;
+        ASSERT_EQUALS(Scope::eFunction, scope->type);
+        ++scope;
+        ASSERT_EQUALS(Scope::eLambda, scope->type);
+        const Token* ret = Token::findsimplematch(tokenizer.tokens(), "return true");
+        ASSERT(ret && ret->scope());
+        ASSERT_EQUALS(ret->scope()->type, Scope::eLambda);
     }
 
     // #6298 "stack overflow in Scope::findFunctionInBase (endless recursion)"

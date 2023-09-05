@@ -15,7 +15,7 @@ import subprocess
 try:
     import pathlib
 except ImportError:
-    message = "Failed to load pathlib. Upgrade python to 3.x or install pathlib with 'pip install pathlib'."
+    message = "Failed to load pathlib. Upgrade Python to 3.x or install pathlib with 'pip install pathlib'."
     error_id = 'pythonError'
     if '--cli' in sys.argv:
         msg = { 'file': '',
@@ -119,8 +119,8 @@ class MacroUsage:
         self.name = element.get('name')
         _load_location(self, element)
         self.usefile = element.get('usefile')
-        self.useline = element.get('useline')
-        self.usecolumn = element.get('usecolumn')
+        self.useline = int(element.get('useline'))
+        self.usecolumn = int(element.get('usecolumn'))
         self.isKnownValue = element.get('is-known-value', 'false') == 'true'
 
     def __repr__(self):
@@ -255,8 +255,8 @@ class Token:
         externLang
         isExpandedMacro    Is this token a expanded macro token
         isRemovedVoidParameter  Has void parameter been removed?
-        isSplittedVarDeclComma  Is this a comma changed to semicolon in a splitted variable declaration ('int a,b;' => 'int a; int b;')
-        isSplittedVarDeclEq     Is this a '=' changed to semicolon in a splitted variable declaration ('int a=5;' => 'int a; a=5;')
+        isSplittedVarDeclComma  Is this a comma changed to semicolon in a split variable declaration ('int a,b;' => 'int a; int b;')
+        isSplittedVarDeclEq     Is this a '=' changed to semicolon in a split variable declaration ('int a=5;' => 'int a; a=5;')
         isImplicitInt      Is this token an implicit "int"?
         isComplex
         isRestrict

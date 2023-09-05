@@ -106,6 +106,7 @@ private:
         TEST_CASE(varScope32);      // #11441
         TEST_CASE(varScope33);
         TEST_CASE(varScope34);
+        TEST_CASE(varScope35);
 
         TEST_CASE(oldStylePointerCast);
         TEST_CASE(invalidPointerCast);
@@ -819,6 +820,14 @@ private:
                "void f() {\n"
                "    STATIC_ASSERT(sizeof(int) == sizeof(FOO));\n"
                "}\n");
+        ASSERT_EQUALS("", errout.str());
+
+        // #11505
+        check("void f(uint16_t num, uint8_t radix) {\n"
+              "    int c = num % radix;\n"
+              "    num /= radix;\n"
+              "    if (!num) {}\n"
+              "}\n");
         ASSERT_EQUALS("", errout.str());
     }
 
@@ -1624,6 +1633,27 @@ private:
               "        if (b)\n"
               "            i++;\n"
               "    }\n"
+              "}\n");
+        ASSERT_EQUALS("", errout.str());
+    }
+
+    void varScope35() { // #11845
+        check("void f(int err, const char* src) {\n"
+              "    const char* msg = \"Success\";\n"
+              "    char buf[42];\n"
+              "    if (err != 0)\n"
+              "        msg = strcpy(buf, src);\n"
+              "    printf(\"%d: %s\\n\", err, msg);\n"
+              "}\n");
+        ASSERT_EQUALS("", errout.str());
+
+        check("char* g(char* dst, const char* src);\n"
+              "void f(int err, const char* src) {\n"
+              "    const char* msg = \"Success\";\n"
+              "    char buf[42];\n"
+              "    if (err != 0)\n"
+              "        msg = g(buf, src);\n"
+              "    printf(\"%d: %s\\n\", err, msg);\n"
               "}\n");
         ASSERT_EQUALS("", errout.str());
     }
@@ -3219,6 +3249,55 @@ private:
                       "[test.cpp:6]: (style) Parameter 'a' can be declared as pointer to const\n"
                       "[test.cpp:9]: (style) Parameter 'a' can be declared as pointer to const\n",
                       errout.str());
+
+        check("void g(int*);\n"
+              "void f(std::vector<int>& v) {\n"
+              "    g(v.data());\n"
+              "}\n");
+        ASSERT_EQUALS("", errout.str());
+
+        check("void g(const int*);\n"
+              "void f(std::vector<int>& v) {\n"
+              "    g(v.data());\n"
+              "}\n");
+        ASSERT_EQUALS("[test.cpp:2]: (style) Parameter 'v' can be declared as reference to const\n", errout.str());
+
+        check("struct a {\n"
+              "    template <class T>\n"
+              "    void mutate();\n"
+              "};\n"
+              "struct b {};\n"
+              "template <class T>\n"
+              "void f(a& x) {\n"
+              "    x.mutate<T>();\n"
+              "}\n"
+              "template <class T>\n"
+              "void f(const b&)\n"
+              "{}\n"
+              "void g(a& c) { f<int>(c); }\n");
+        ASSERT_EQUALS("", errout.str());
+
+        check("struct S {\n"
+              "    template <typename T>\n"
+              "    T* g() {\n"
+              "        return reinterpret_cast<T*>(m);\n"
+              "    }\n"
+              "    template <typename T>\n"
+              "    const T* g() const {\n"
+              "        return reinterpret_cast<const T*>(m);\n"
+              "    }\n"
+              "    char* m;\n"
+              "};\n"
+              "void f(S& s) {\n"
+              "    const int* p = s.g<int>();\n"
+              "}\n");
+        ASSERT_EQUALS("", errout.str());
+
+        check("struct S { int x; };\n" // #11818
+              "std::istream& f(std::istream& is, S& s) {\n"
+              "    return is >> s.x;\n"
+              "}\n");
+        ASSERT_EQUALS("", errout.str());
     }
 
     void constParameterCallback() {
@@ -3697,6 +3776,13 @@ private:
               "    p = q;\n"
               "}\n");
         ASSERT_EQUALS("", errout.str());
+
+        check("struct S { int a[1]; };\n"
+              "void f(S* s) {\n"
+              "    if (s->a[0]) {}\n"
+              "}\n");
+        ASSERT_EQUALS("[test.cpp:2]: (style) Parameter 's' can be declared as pointer to const\n",
+                      errout.str());
     }
 
     void switchRedundantAssignmentTest() {
@@ -6513,6 +6599,15 @@ private:
               "    }\n"
               "}\n");
         ASSERT_EQUALS("[test.cpp:3] -> [test.cpp:4]: (style) The comparison 'p == 0' is always true.\n", errout.str());
+
+        // #11820
+        check("unsigned f(unsigned x) {\n"
+              "    return x - !!x;\n"
+              "}\n"
+              "unsigned g(unsigned x) {\n"
+              "    return !!x - x;\n"
+              "}\n");
+        ASSERT_EQUALS("", errout.str());
     }
 
     void duplicateExpression8() {

@@ -477,8 +477,7 @@ private:
 
         if (tokenizer.tokens())
             return tokenizer.tokens()->stringifyList(false, expand, false, true, false, nullptr, nullptr);
-        else
-            return "";
+        return "";
     }
 
 #define tokenizeAndStringifyWindows(...) tokenizeAndStringifyWindows_(__FILE__, __LINE__, __VA_ARGS__)
@@ -504,8 +503,7 @@ private:
 
         if (tokenizer.tokens())
             return tokenizer.tokens()->stringifyList(false, expand, false, true, false, nullptr, nullptr);
-        else
-            return "";
+        return "";
     }
 
     std::string tokenizeAndStringify_(const char* file, int line, const char code[], const Settings &settings, const char filename[] = "test.cpp") {
@@ -3503,6 +3501,55 @@ private:
             ASSERT_EQUALS(true, tok1->link() == tok2);
             ASSERT_EQUALS(true, tok2->link() == tok1);
         }
+
+        { // #11810
+            const char code[] = "void f() {\n"
+                                "    auto g = [] <typename A, typename B> (A a, B&& b) { return a < b; };\n"
+                                "}\n";
+            errout.str("");
+            Tokenizer tokenizer(&settings0, this);
+            std::istringstream istr(code);
+            ASSERT(tokenizer.tokenize(istr, "test.cpp"));
+            const Token* tok1 = Token::findsimplematch(tokenizer.tokens(), "< A");
+            const Token* tok2 = Token::findsimplematch(tok1, "> (");
+            ASSERT_EQUALS(true, tok1->link() == tok2);
+            ASSERT_EQUALS(true, tok2->link() == tok1);
+        }
+
+        {
+            const char code[] = "void f() {\n"
+                                "    auto g = [] <typename U> () {\n"
+                                "        return [] <typename T> () {};\n"
+                                "    };\n"
+                                "}\n";
+            errout.str("");
+            Tokenizer tokenizer(&settings0, this);
+            std::istringstream istr(code);
+            ASSERT(tokenizer.tokenize(istr, "test.cpp"));
+            const Token* tok1 = Token::findsimplematch(tokenizer.tokens(), "< T");
+            const Token* tok2 = Token::findsimplematch(tok1, "> (");
+            ASSERT_EQUALS(true, tok1->link() == tok2);
+            ASSERT_EQUALS(true, tok2->link() == tok1);
+        }
+
+        {
+            const char code[] = "struct S {\n" // #11840
+                                "    template<typename T, typename U>\n"
+                                "    void operator() (int);\n"
+                                "};\n"
+                                "void f() {\n"
+                                "    S s;\n"
+                                "    s.operator()<int, int>(1);\n"
+                                "}\n";
+            errout.str("");
+            Tokenizer tokenizer(&settings0, this);
+            std::istringstream istr(code);
+            ASSERT(tokenizer.tokenize(istr, "test.cpp"));
+            const Token* tok1 = Token::findsimplematch(tokenizer.tokens(), "< int");
+            const Token* tok2 = Token::findsimplematch(tok1, "> (");
+            ASSERT_EQUALS(true, tok1->link() == tok2);
+            ASSERT_EQUALS(true, tok2->link() == tok1);
+        }
     }
 
     void simplifyString() {
@@ -4922,7 +4969,7 @@ private:
         const char code[] = "void f() {"
                             "static_cast<ScToken*>(xResult.operator->())->GetMatrix();"
                             "}";
-        const char result[] = "void f ( ) { static_cast < ScToken * > ( xResult . operator. ( ) ) . GetMatrix ( ) ; }";
+        const char result[] = "void f ( ) { static_cast < ScToken * > ( xResult . operator-> ( ) ) . GetMatrix ( ) ; }";
         ASSERT_EQUALS(result, tokenizeAndStringify(code));
     }
 
@@ -5955,6 +6002,7 @@ private:
         ASSERT_EQUALS("x00throw:?return", testAst("return x ? 0 : throw 0;")); // #9768
         ASSERT_EQUALS("val0<1throwval:?return", testAst("return val < 0 ? throw 1 : val;")); // #8526
         ASSERT_EQUALS("ix0<00throw:?=", testAst("int i = x < 0 ? 0 : throw 0;"));
+        ASSERT_EQUALS("pa[pb[<1-pa[pb[>:?return", testAst("return p[a] < p[b] ? -1 : p[a] > p[b];"));
 
         ASSERT_EQUALS("a\"\"=", testAst("a=\"\""));
         ASSERT_EQUALS("a\'\'=", testAst("a=\'\'"));
@@ -6337,6 +6385,7 @@ private:
         ASSERT_EQUALS("var{{,{{,{", testAst("auto var{ {{},{}}, {} };"));
         ASSERT_EQUALS("fXYabcfalse==CD:?,{,{(", testAst("f({X, {Y, abc == false ? C : D}});"));
         ASSERT_EQUALS("stdvector::p0[{(return", testAst("return std::vector<int>({ p[0] });"));
+        ASSERT_EQUALS("vstdvector::{=", testAst("auto v = std::vector<int>{ };"));
 
         // Initialization with decltype(expr) instead of a type
         ASSERT_EQUALS("decltypex((", testAst("decltype(x)();"));
@@ -6843,6 +6892,18 @@ private:
         ASSERT_NO_THROW(tokenizeAndStringify(code11));
 
         ASSERT_NO_THROW(tokenizeAndStringify("alignas(8) alignas(16) int x;")); // alignas is not unknown macro
+
+        ASSERT_THROW(tokenizeAndStringify("void foo() { if(x) SYSTEM_ERROR }"), InternalError);
+        ASSERT_THROW(tokenizeAndStringify("void foo() { dostuff(); SYSTEM_ERROR }"), InternalError);
+
+        ASSERT_NO_THROW(tokenizeAndStringify("void f(void* q) {\n"
+                                             "    g(&(S) { .p = (int*)q });\n"
+                                             "}\n", /*expand*/ true, cppcheck::Platform::Type::Native, "test.c"));
+
+        ASSERT_NO_THROW(tokenizeAndStringify("typedef struct { int i; } S;\n"
+                                             "void f(float a) {\n"
+                                             "S s = (S){ .i = (int)a };\n"
+                                             "}\n", /*expand*/ true, cppcheck::Platform::Type::Native, "test.c"));
     }
 
     void findGarbageCode() { // Test Tokenizer::findGarbageCode()
@@ -6919,6 +6980,9 @@ private:
         ASSERT_NO_THROW(tokenizeAndStringify("template <class T> constexpr int n = 1;\n"
                                              "template <class T> T a[n<T>];\n"));
 
+        ASSERT_EQUALS("std :: vector < int > x ;", // #11785
+                      tokenizeAndStringify("std::vector<int> typedef v; v x;\n"));
+
 
         // op op
         ASSERT_THROW_EQUALS(tokenizeAndStringify("void f() { dostuff (x==>y); }"), InternalError, "syntax error: == >");
@@ -6936,6 +7000,47 @@ private:
         ASSERT_THROW_EQUALS(tokenizeAndStringify("int f() { MACRO(x) return 0; }"),
                             InternalError,
                             "There is an unknown macro here somewhere. Configuration is required. If MACRO is a macro then please configure it.");
+
+        ASSERT_THROW_EQUALS(tokenizeAndStringify("void f(int i) {\n" // #11770
+                                                 "    if (i == 0) {}\n"
+                                                 "    else if (i == 1) {}\n"
+                                                 "    else\n"
+                                                 "        MACRO(i)\n"
+                                                 "}\n"
+                                                 "void g() {}\n"),
+                            InternalError,
+                            "There is an unknown macro here somewhere. Configuration is required. If MACRO is a macro then please configure it.");
+        ASSERT_NO_THROW(tokenizeAndStringify("void f(int i) {\n"
+                                             "    if (i == 0) {}\n"
+                                             "    else if (i == 1) {}\n"
+                                             "    else\n"
+                                             "        MACRO(i);\n"
+                                             "}\n"
+                                             "void g() {}\n"));
+
+        ASSERT_THROW_EQUALS(tokenizeAndStringify("class C : public QObject {\n" // #11770
+                                                 "    struct S { static void g() {} };\n"
+                                                 "private Q_SLOTS:\n"
+                                                 "    void f() { S::g(); }\n"
+                                                 "};\n"),
+                            InternalError,
+                            "There is an unknown macro here somewhere. Configuration is required. If Q_SLOTS is a macro then please configure it.");
+        ASSERT_THROW_EQUALS(tokenizeAndStringify("class C : public QObject {\n"
+                                                 "    struct S { static void g() {} };\n"
+                                                 "private slots:\n"
+                                                 "    void f() { S::g(); }\n"
+                                                 "};\n"),
+                            InternalError,
+                            "There is an unknown macro here somewhere. Configuration is required. If slots is a macro then please configure it.");
+
+        ASSERT_THROW_EQUALS(tokenizeAndStringify("namespace U_ICU_ENTRY_POINT_RENAME(icu) { }\n"
+                                                 "namespace icu = U_ICU_ENTRY_POINT_RENAME(icu);\n"
+                                                 "namespace U_ICU_ENTRY_POINT_RENAME(icu) {\n"
+                                                 "    class BreakIterator;\n"
+                                                 "}\n"
+                                                 "typedef int UStringCaseMapper(icu::BreakIterator* iter);\n"),
+                            InternalError,
+                            "There is an unknown macro here somewhere. Configuration is required. If U_ICU_ENTRY_POINT_RENAME is a macro then please configure it.");
     }
 
 

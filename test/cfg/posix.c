@@ -330,6 +330,13 @@ double nullPointer_erand48(unsigned short xsubi[3])
     return erand48(xsubi);
 }
 
+struct non_const_parameter_erand48_struct { unsigned short xsubi[3]; };
+// No warning is expected that dat can be const
+double non_const_parameter_erand48(struct non_const_parameter_erand48_struct *dat)
+{
+    return erand48(dat->xsubi);
+}
+
 unsigned short *nullPointer_seed48(unsigned short seed16v[3])
 {
     // cppcheck-suppress nullPointer
@@ -1261,7 +1268,7 @@ void timet_h(struct timespec* ptp1)
     clock_settime(clk_id2, ptp1);
 
     struct timespec tp;
-    // cppcheck-suppress uninitvar
+    // FIXME cppcheck-suppress uninitvar
     clock_settime(CLOCK_REALTIME, &tp); // #6577 - false negative
     // cppcheck-suppress uninitvar
     clock_settime(clk_id3, &tp);

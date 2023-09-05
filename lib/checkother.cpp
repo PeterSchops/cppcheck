@@ -802,9 +802,9 @@ void CheckOther::checkUnreachableCode()
                         if (Token::Match(silencedWarning, "( void ) %name% ;")) {
                             silencedWarning = silencedWarning->tokAt(5);
                             continue;
-                        } else if (silencedWarning && silencedWarning == scope->bodyEnd)
+                        }
+                        if (silencedWarning && silencedWarning == scope->bodyEnd)
                             silencedCompilerWarningOnly = true;
-
                         break;
                     }
                     if (silencedWarning)
@@ -915,7 +915,8 @@ void CheckOther::checkVariableScope()
             if (tok->str() == "(") {
                 forHead = true;
                 break;
-            } else if (Token::Match(tok, "[;{}]"))
+            }
+            if (Token::Match(tok, "[;{}]"))
                 break;
         }
         if (forHead)
@@ -990,7 +991,7 @@ void CheckOther::checkVariableScope()
     }
 }
 
-bool CheckOther::checkInnerScope(const Token *tok, const Variable* var, bool& used)
+bool CheckOther::checkInnerScope(const Token *tok, const Variable* var, bool& used) const
 {
     const Scope* scope = tok->next()->scope();
     bool loopVariable = scope->isLoopScope();
@@ -1069,6 +1070,16 @@ bool CheckOther::checkInnerScope(const Token *tok, const Variable* var, bool& us
 
                 if (scope->bodyStart && scope->bodyStart->isSimplifiedScope())
                     return false; // simplified if/for/switch init statement
+            }
+            if (var->isArrayOrPointer()) {
+                int argn{};
+                if (const Token* ftok = getTokenArgumentFunction(tok, argn)) { // var passed to function?
+                    if (ftok->function() && Function::returnsPointer(ftok->function()))
+                        return false;
+                    const std::string ret = mSettings->library.returnValueType(ftok); // assume that var is returned
+                    if (!ret.empty() && ret.back() == '*')
+                        return false;
+                }
             }
         }
     }
@@ -1286,8 +1297,7 @@ static bool canBeConst(const Variable *var, const Settings* settings)
             const Function* func = tok2->tokAt(2)->function();
             if (func && (func->isConst() || func->isStatic()))
                 continue;
-            else
-                return false;
+            return false;
         } else if (isConstRangeBasedFor(tok2))
             continue;
         else
@@ -1395,10 +1405,8 @@ static bool isVariableMutableInInitializer(const Token* start, const Token * end
                 if (memberVar->isConst())
                     continue;
             }
-            return true;
-        } else {
-            return true;
         }
+        return true;
     }
     return false;
 }
@@ -1630,11 +1638,11 @@ void CheckOther::checkConstPointer()
             int argn = -1;
             if (Token::Match(parent, "%oror%|%comp%|&&|?|!|-"))
                 continue;
-            else if (Token::simpleMatch(parent, "(") && Token::Match(parent->astOperand1(), "if|while"))
+            if (Token::simpleMatch(parent, "(") && Token::Match(parent->astOperand1(), "if|while"))
                 continue;
-            else if (Token::simpleMatch(parent, "=") && parent->astOperand1() == tok)
+            if (Token::simpleMatch(parent, "=") && parent->astOperand1() == tok)
                 continue;
-            else if (const Token* ftok = getTokenArgumentFunction(tok, argn)) {
+            if (const Token* ftok = getTokenArgumentFunction(tok, argn)) {
                 if (ftok->function() && !parent->isCast()) {
                     const Variable* argVar = ftok->function()->getArgumentVar(argn);
                     if (argVar && argVar->valueType() && argVar->valueType()->isConst(vt->pointer)) {
@@ -1863,22 +1871,21 @@ static bool isConstStatement(const Token *tok, bool cpp)
             return false;
         return isWithoutSideEffects(cpp, tok) && isConstStatement(tok->astOperand2(), cpp);
     }
-    else if (tok->isCast() && tok->next() && tok->next()->isStandardType())
+    if (tok->isCast() && tok->next() && tok->next()->isStandardType())
         return isWithoutSideEffects(cpp, tok->astOperand1()) && isConstStatement(tok->astOperand1(), cpp);
     if (Token::simpleMatch(tok, "."))
         return isConstStatement(tok->astOperand2(), cpp);
     if (Token::simpleMatch(tok, ",")) {
         if (tok->astParent()) // warn about const statement on rhs at the top level
             return isConstStatement(tok->astOperand1(), cpp) && isConstStatement(tok->astOperand2(), cpp);
-        else {
-            const Token* lml = previousBeforeAstLeftmostLeaf(tok); // don't warn about matrix/vector assignment (e.g. Eigen)
-            if (lml)
-                lml = lml->next();
-            const Token* stream = lml;
-            while (stream && Token::Match(stream->astParent(), ".|[|(|*"))
-                stream = stream->astParent();
-            return (!stream || !isLikelyStream(cpp, stream)) && isConstStatement(tok->astOperand2(), cpp);
-        }
+
+        const Token* lml = previousBeforeAstLeftmostLeaf(tok); // don't warn about matrix/vector assignment (e.g. Eigen)
+        if (lml)
+            lml = lml->next();
+        const Token* stream = lml;
+        while (stream && Token::Match(stream->astParent(), ".|[|(|*"))
+            stream = stream->astParent();
+        return (!stream || !isLikelyStream(cpp, stream)) && isConstStatement(tok->astOperand2(), cpp);
     }
     if (Token::simpleMatch(tok, "?") && Token::simpleMatch(tok->astOperand2(), ":")) // ternary operator
         return isConstStatement(tok->astOperand1(), cpp) && isConstStatement(tok->astOperand2()->astOperand1(), cpp) && isConstStatement(tok->astOperand2()->astOperand2(), cpp);
@@ -1916,8 +1923,7 @@ static bool isConstTop(const Token *tok)
         Token::Match(tok->astTop()->previous(), "for|if (") && Token::simpleMatch(tok->astTop()->astOperand2(), ";")) {
         if (Token::simpleMatch(tok->astParent()->astParent(), ";"))
             return tok->astParent()->astOperand2() == tok;
-        else
-            return tok->astParent()->astOperand1() == tok;
+        return tok->astParent()->astOperand1() == tok;
     }
     if (Token::simpleMatch(tok, "[")) {
         const Token* bracTok = tok;
@@ -2314,7 +2320,8 @@ void CheckOther::checkInvalidFree()
         for (const Token* tok = scope->bodyStart->next(); tok != scope->bodyEnd; tok = tok->next()) {
 
             // Keep track of which variables were assigned addresses to newly-allocated memory
-            if (Token::Match(tok, "%var% = malloc|g_malloc|new")) {
+            if ((mTokenizer->isCPP() && Token::Match(tok, "%var% = new")) ||
+                (Token::Match(tok, "%var% = %name% (") && mSettings->library.getAllocFuncInfo(tok->tokAt(2)))) {
                 allocation.insert(std::make_pair(tok->varId(), tok->strAt(2)));
                 inconclusive.insert(std::make_pair(tok->varId(), false));
             }
